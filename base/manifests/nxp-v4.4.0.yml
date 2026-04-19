@@ -1,0 +1,43 @@
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.4.0
+      import:
+        # Pull only the modules needed for NXP targets.
+        # To add support for another vendor, append their HAL here and rebuild the base image.
+        # Full module list: https://github.com/zephyrproject-rtos/zephyr/blob/v4.4.0/west.yml
+        name-allowlist:
+          # ARM architecture support (required for all Cortex-M NXP targets)
+          # cmsis = CMSIS 5.x (Cortex-A/R), cmsis_6 = CMSIS 6.x (Cortex-M)
+          - cmsis
+          - cmsis_6
+
+          # NXP HAL (i.MX RT, LPC, Kinetis, S32K, MCX)
+          - hal_nxp
+
+          # C standard library (Zephyr default since 3.x)
+          - picolibc
+
+          # Crypto / TLS
+          - mbedtls
+
+          # SEGGER RTT and SystemView (debugging)
+          - segger
+
+          # FAT filesystem (SD card, USB MSC)
+          - fatfs
+
+          # LVGL (GUI — i.MX RT boards with displays)
+          - lvgl
+
+          # Multicore messaging (i.MX RT1170, i.MX RT1160)
+          - open-amp
+          - libmetal
+
+  self:
+    path: beg-manifest

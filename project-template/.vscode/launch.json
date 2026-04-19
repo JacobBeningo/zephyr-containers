@@ -1,0 +1,39 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug (FRDM-MCXN947)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "linkserver",
+            // Run `LinkServer devices` to confirm the exact device string for your probe.
+            "device": "MCXN947:FRDM-MCXN947",
+            "coreIndex": 0,
+            "executable": "${workspaceFolder}/build/zephyr/zephyr.elf",
+            "runToEntryPoint": "main",
+            // Remap container build paths to host paths so GDB finds source files.
+            // App source (/workdir/app/src/...) resolves to this workspace.
+            // Zephyr kernel source (/workdir/zephyr/...) is left unmapped —
+            // GDB will show disassembly for kernel frames, which is fine for app debugging.
+            "sourceFileMap": {
+                "/workdir/app": "${workspaceFolder}"
+            },
+            "preLaunchTask": "Build: frdm_mcxn947/mcxn947/cpu0",
+            "svdFile": "" // Optional: add path to MCXN947.svd for peripheral register view
+        },
+        {
+            "name": "Debug (FRDM-MCXW71)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "linkserver",
+            "device": "MCXW716C:FRDM-MCXW71",
+            "executable": "${workspaceFolder}/build/zephyr/zephyr.elf",
+            "runToEntryPoint": "main",
+            "sourceFileMap": {
+                "/workdir/app": "${workspaceFolder}"
+            },
+            "preLaunchTask": "Build: frdm_mcxw71/mcxw716c",
+            "svdFile": "" // Optional: add path to MCXW716C.svd for peripheral register view
+        }
+    ]
+}

@@ -1,0 +1,17 @@
+services:
+  zephyr:
+    image: ghcr.io/jacobbeningo/zephyr-base:nxp-v4.4.0
+    volumes:
+      # App source and build/ output both land on the host so VS Code can open
+      # the compile_commands.json and zephyr.elf for IntelliSense and debugging.
+      - .:/workdir/app
+      # Persist ccache across runs for faster incremental builds
+      - ccache:/home/zephyr/.ccache
+    working_dir: /workdir/app
+    environment:
+      - CCACHE_DIR=/home/zephyr/.ccache
+    stdin_open: true
+    tty: true
+
+volumes:
+  ccache:

@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod +x *)",
+      "Bash(docker buildx *)",
+      "Bash(docker info *)",
+      "Bash(bash *)",
+      "Bash(docker system df *)",
+      "Bash(sort -k3 -h -r)",
+      "Bash(docker builder *)",
+      "Bash(docker image *)",
+      "Bash(docker rmi *)",
+      "Bash(pkill -f \"docker buildx build\")",
+      "Bash(docker run *)",
+      "Bash(python3 -c \"import sys,json; cfg=json.load\\(sys.stdin\\); print\\('logged in' if 'ghcr.io' in cfg.get\\('auths',{}\\) else 'not logged in'\\)\")",
+      "Bash(PUSH=1 PLATFORMS=linux/amd64,linux/arm64 bash /Users/jacobbeningo/Projects/04-Templates/zephyr-containers/sdk/build.sh)",
+      "Bash(xargs sed *)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Initial commit: BEG Zephyr container images for Zephyr 4.4 / NXP *)"
+    ]
+  }
+}

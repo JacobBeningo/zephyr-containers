@@ -1,0 +1,22 @@
+{
+  "name": "Zephyr Dev Container",
+  "image": "ghcr.io/jacobbeningo/zephyr-base:v4.4.0",
+  "workspaceFolder": "/workdir/app",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workdir/app,type=bind",
+  "mounts": [
+    "source=zephyr-ccache,target=/home/zephyr/.ccache,type=volume"
+  ],
+  "remoteUser": "zephyr",
+  "containerEnv": {
+    "CCACHE_DIR": "/home/zephyr/.ccache"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "twxs.cmake"
+      ]
+    }
+  }
+}

@@ -1,0 +1,47 @@
+name: Build Project (Template)
+
+# Copy this workflow into your own project repository and adjust as needed.
+# This example builds the app from the project-template directory.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io/jacobbeningo
+  ZEPHYR_VERSION: v4.4.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ env.ZEPHYR_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ env.ZEPHYR_VERSION }}-
+
+      - name: Build firmware
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/project-template/app:/workdir/app" \
+            -v "${{ github.workspace }}/.ccache:/home/zephyr/.ccache" \
+            -e CCACHE_DIR=/home/zephyr/.ccache \
+            ${{ env.REGISTRY }}/zephyr-base:${{ env.ZEPHYR_VERSION }} \
+            west build -b qemu_cortex_m3 /workdir/app -p always
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: project-template/app/build/zephyr/zephyr.elf

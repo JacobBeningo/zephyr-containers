@@ -1,0 +1,16 @@
+{
+    // IntelliSense: use the compile_commands.json from the last container build.
+    // Zephyr headers resolve to container paths (/workdir/zephyr/...) so they
+    // won't browse on the host, but your app source will have full IntelliSense.
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+    "C_Cpp.default.cStandard": "c17",
+    "C_Cpp.default.cppStandard": "c++17",
+
+    // LinkServer install path — update if your version differs.
+    // Find it with: ls /Applications/LinkServer_*/
+    "cortex-debug.linkserverPath": "/Applications/LinkServer_24.9.75/LinkServer",
+
+    // Suppress the "includePath" squiggles for Zephyr headers that don't
+    // exist on the host — the compile_commands.json handles them correctly.
+    "C_Cpp.errorSquiggles": "disabled"
+}
