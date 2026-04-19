@@ -19,9 +19,9 @@ RUN west init -l /workdir/beg-manifest \
     && west update \
     && west zephyr-export
 
-# Also register cmake packages for root (needed when GitHub Actions runs with --user root)
+# Copy cmake package registration to root's home for GitHub Actions --user root compatibility
 USER root
-RUN west zephyr-export
+RUN cp -r /home/zephyr/.cmake /root/.cmake
 USER zephyr
 
 RUN pip3 install --no-cache-dir --break-system-packages --upgrade pip \
