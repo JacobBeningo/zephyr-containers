@@ -19,9 +19,11 @@ RUN west init -l /workdir/beg-manifest \
     && west update \
     && west zephyr-export
 
-# Copy cmake package registration to root's home for GitHub Actions --user root compatibility
+# Allow root to run west commands in the zephyr-owned workspace (GitHub Actions --user root)
 USER root
-RUN cp -r /home/zephyr/.cmake /root/.cmake
+RUN git config --global --add safe.directory /workdir/zephyr \
+    && git config --global --add safe.directory /workdir \
+    && cp -r /home/zephyr/.cmake /root/.cmake
 USER zephyr
 
 RUN pip3 install --no-cache-dir --break-system-packages --upgrade pip \
