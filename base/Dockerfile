@@ -21,8 +21,8 @@ RUN west init -l /workdir/beg-manifest \
 
 # Allow root to run west commands in the zephyr-owned workspace (GitHub Actions --user root)
 USER root
-RUN git config --global --add safe.directory /workdir/zephyr \
-    && git config --global --add safe.directory /workdir \
+RUN git config --system --add safe.directory /workdir/zephyr \
+    && git config --system --add safe.directory /workdir \
     && cp -r /home/zephyr/.cmake /root/.cmake
 USER zephyr
 
