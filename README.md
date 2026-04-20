@@ -2,6 +2,27 @@
 
 Reproducible Zephyr RTOS build environments delivered as Docker images. Students and engineers get a working build environment with a single `docker pull` — no SDK installation, no toolchain setup, no west workspace configuration.
 
+## Two Ways to Use These Images
+
+**Option 1 — Pull the pre-built image (recommended)**
+Use the images published to ghcr.io. No build step required. Right for students, engineers, and CI pipelines targeting NXP targets with Zephyr 4.4.0.
+
+```bash
+docker pull ghcr.io/jacobbeningo/zephyr-base:v4.4.0
+```
+
+**Option 2 — Build from scratch**
+Clone this repo and build your own image. Right for adding a different vendor (STM32, Nordic, etc.), targeting a different Zephyr version, or customizing the image.
+
+```bash
+git clone https://github.com/JacobBeningo/zephyr-containers
+MANIFEST_FILE=nxp-v4.4.0.yml bash base/build.sh
+```
+
+See [Building the Images](#building-the-images) and [Adding a Vendor Variant](#adding-a-vendor-variant) for details.
+
+---
+
 ## What's Inside
 
 Three-tier image hierarchy:
@@ -37,7 +58,7 @@ Need a different vendor? Add a new manifest under `base/manifests/` and rebuild 
 
 ---
 
-## Quick Start
+## Local Development Workflow
 
 ### Prerequisites (host machine)
 
@@ -60,6 +81,7 @@ Copy the `project-template/` directory from this repo as a starting point, or ad
 ```
 your-app/
 ├── build.sh                  # container build wrapper
+├── docker-compose.yml        # interactive shell
 ├── .vscode/
 │   ├── launch.json           # debug configurations
 │   ├── tasks.json            # build tasks
@@ -73,25 +95,6 @@ your-app/
 ### 3. Build
 
 ```bash
-./build.sh frdm_mcxn947/mcxn947/cpu0
-```
-
-Build output (including `zephyr.elf` and `compile_commands.json`) lands in `./build/` on the host.
-
-### 4. Debug in VS Code
-
-Press **F5** and select a debug configuration. Cortex Debug will:
-1. Run the build task (rebuilds if source changed)
-2. Launch LinkServer and flash the ELF to the board
-3. Stop at `main` — step through code normally
-
----
-
-## Daily Workflow
-
-### Building
-
-```bash
 # Incremental build
 ./build.sh frdm_mcxn947/mcxn947/cpu0
 
@@ -99,34 +102,16 @@ Press **F5** and select a debug configuration. Cortex Debug will:
 ./build.sh frdm_mcxn947/mcxn947/cpu0 clean
 ```
 
+Build output (including `zephyr.elf` and `compile_commands.json`) lands in `./build/` on the host.
+
 The script auto-detects stale cmake caches (e.g. from a prior host-native build) and cleans automatically. You only need `clean` when switching boards or explicitly forcing a full rebuild.
 
-### Interactive shell
+### 4. Debug in VS Code
 
-For running west commands directly:
-
-```bash
-# Using docker compose (from project directory)
-docker compose run --rm zephyr
-
-# Or directly
-docker run -it --rm \
-  -v $(pwd):/workdir/app \
-  ghcr.io/jacobbeningo/zephyr-base:v4.4.0
-```
-
-Inside the container you have full west access:
-
-```bash
-west build -b frdm_mcxn947/mcxn947/cpu0 /workdir/app -d /workdir/app/build
-west boards | grep frdm
-west list
-west config --list
-```
-
-> **Note:** `west flash` and `west debug` require USB access to the debug probe. These do not work from inside a container on macOS or Windows. Use VS Code + Cortex Debug for flashing and debugging instead.
-
-### Debugging
+Press **F5** and select a debug configuration. Cortex Debug will:
+1. Run the build task (rebuilds if source changed)
+2. Launch LinkServer and flash the ELF to the board
+3. Stop at `main` — step through code normally
 
 Debugging uses the host-native LinkServer — no west required:
 
@@ -139,13 +124,49 @@ Debugging uses the host-native LinkServer — no west required:
 
 Source files are remapped automatically: the ELF contains container paths (`/workdir/app/src/main.c`) and VS Code translates them to your local workspace.
 
+### 5. Interactive shell (optional)
+
+For running west commands directly — listing boards, inspecting configuration, running Twister locally:
+
+```bash
+# Using docker compose (recommended, from project directory)
+docker compose run --rm zephyr
+
+# Or directly
+docker run -it --rm \
+  -v $(pwd):/workdir/app \
+  ghcr.io/jacobbeningo/zephyr-base:v4.4.0
+```
+
+Inside the container you have full west access:
+
+```bash
+west build -b frdm_mcxn947/mcxn947/cpu0 /workdir/app -d /workdir/app/build
+west twister -T /workdir/app/tests -p native_sim/native/64
+west boards | grep frdm
+west list
+west config --list
+```
+
+> **Note:** `west flash` and `west debug` require USB access to the debug probe. These do not work from inside a container on macOS or Windows. Use VS Code + Cortex Debug for flashing and debugging instead.
+
 ---
 
-## Using in GitHub Actions
+## CI/CD Workflow (GitHub Actions)
 
 The base image is public on ghcr.io — no credentials required to pull it.
 
+### Complete workflow example
+
 ```yaml
+name: Firmware CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -155,20 +176,93 @@ jobs:
     defaults:
       run:
         working-directory: /workdir
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - frdm_mcxn947/mcxn947/cpu0
+          - native_sim/native/64
 
+    steps:
+      - name: Checkout firmware
+        uses: actions/checkout@v4
+
+      # No west init, west update, or pip install needed —
+      # Zephyr 4.4.0 and all NXP modules are baked into the image.
+      - name: Build firmware
+        run: |
+          west build -b ${{ matrix.board }} \
+            $GITHUB_WORKSPACE \
+            -d /workdir/build/${{ matrix.board }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        if: matrix.board == 'frdm_mcxn947/mcxn947/cpu0'
+        with:
+          name: firmware-frdm_mcxn947
+          path: |
+            /workdir/build/${{ matrix.board }}/zephyr/zephyr.bin
+            /workdir/build/${{ matrix.board }}/zephyr/zephyr.elf
+          retention-days: 30
+
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/jacobbeningo/zephyr-base:v4.4.0
+      options: --user root
+    defaults:
+      run:
+        working-directory: /workdir
+
+    steps:
+      - name: Checkout firmware
+        uses: actions/checkout@v4
+
+      - name: Run Twister tests
+        run: |
+          west twister \
+            -T $GITHUB_WORKSPACE/tests/ \
+            -p native_sim/native/64 \
+            --inline-logs \
+            --report-dir /workdir/twister-out
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: /workdir/twister-out/
+          retention-days: 30
+
+  static-analysis:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build firmware
-        run: west build -b frdm_mcxn947/mcxn947/cpu0 $GITHUB_WORKSPACE -d /workdir/build
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y cppcheck clang-format
+
+      - name: Run cppcheck
+        run: |
+          cppcheck --enable=warning,style,performance \
+            --error-exitcode=1 \
+            --suppress=missingIncludeSystem \
+            -I src/ src/
+
+      - name: Check formatting
+        run: find src/ -name "*.c" -o -name "*.h" | xargs clang-format --dry-run --Werror
 ```
 
-**Two requirements for container jobs:**
+### Key requirements for container jobs
 
-- `options: --user root` — GitHub Actions needs root to write to its temp directory (`/__w/_temp/`). The image's git and Python environments are configured to work correctly as root.
-- `defaults: run: working-directory: /workdir` — west discovers extension commands (`build`, `twister`, `flash`) by traversing up from the working directory to find the workspace at `/workdir`. Without this, `west build` and `west twister` are unavailable.
+**`options: --user root`**
+GitHub Actions mounts its temp directory (`/__w/_temp/`) with permissions that only allow the runner's user (root) to write. Without this, `actions/checkout` fails with a permission error. The image's git config and Python packages are set up to work correctly as root.
 
-No `west init`, `west update`, or `pip install` steps needed — everything is baked into the image.
+**`defaults: run: working-directory: /workdir`**
+west discovers extension commands (`west build`, `west twister`, `west flash`) by traversing up from the current directory looking for the workspace root (`.west/config`). The workspace lives at `/workdir` inside the image. GitHub Actions defaults to running steps in `/__w/<repo>/<repo>` — outside the workspace — so west can't find its commands without this setting.
+
+**`$GITHUB_WORKSPACE`**
+This is the path where `actions/checkout` places your firmware source code inside the runner (e.g. `/__w/my-repo/my-repo`). Pass it to `west build` as the application source directory. It is separate from `/workdir` where the Zephyr workspace lives.
 
 ---
 
@@ -217,18 +311,6 @@ cp base/manifests/nxp-v4.4.0.yml base/manifests/stm32-v4.4.0.yml
 Edit the `name-allowlist` to include the vendor's HAL:
 
 ```yaml
-name-allowlist:
-  - cmsis
-  - cmsis_6
-  - hal_stm32      # replace hal_nxp with your vendor
-  - picolibc
-  - mbedtls
-  - segger
-```
-
-Also add `west-commands: scripts/west-commands.yml` to the zephyr project entry — this registers `west build`, `west twister`, and other extension commands:
-
-```yaml
 projects:
   - name: zephyr
     remote: zephyrproject-rtos
@@ -237,8 +319,14 @@ projects:
     import:
       name-allowlist:
         - cmsis
-        ...
+        - cmsis_6
+        - hal_stm32      # replace hal_nxp with your vendor
+        - picolibc
+        - mbedtls
+        - segger
 ```
+
+> **Important:** Keep `west-commands: scripts/west-commands.yml` in the zephyr project entry. This registers `west build`, `west twister`, `west flash`, and other extension commands. Omitting it causes all extension commands to silently disappear.
 
 Build the new variant:
 
@@ -329,4 +417,7 @@ ls /Applications/LinkServer_*/
 The base image requires ~15 GB of free space in Docker Desktop's virtual disk. Increase it under Docker Desktop → Settings → Resources → Virtual Disk Limit, or remove unused images with `docker image prune -a`.
 
 **`west build` / `west twister` not found in CI**
-Ensure your workflow sets `defaults: run: working-directory: /workdir` for container jobs. west discovers extension commands by looking for the workspace root (`.west/config`) starting from the current directory. GitHub Actions defaults to running steps in `/__w/...` which is outside the workspace.
+Ensure your workflow sets `defaults: run: working-directory: /workdir` for container jobs. west discovers extension commands by traversing up from the current directory to find the workspace root. GitHub Actions defaults to running steps in `/__w/...` which is outside the `/workdir` workspace.
+
+**`actions/checkout` fails with permission denied in CI**
+Add `options: --user root` to your container spec. GitHub Actions needs root to write to its temp directory inside the container.
