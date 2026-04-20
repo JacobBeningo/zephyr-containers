@@ -22,8 +22,7 @@ RUN west init -l /workdir/beg-manifest \
 # Run as root: install Python deps system-wide (accessible to all users including root),
 # register git safe.directory for zephyr-owned repos, and copy cmake packages.
 USER root
-RUN pip3 install --no-cache-dir --break-system-packages --upgrade pip \
-    && pip3 install --no-cache-dir --break-system-packages \
+RUN pip3 install --no-cache-dir --break-system-packages \
         -r /workdir/zephyr/scripts/requirements.txt \
     && git config --system --add safe.directory /workdir/zephyr \
     && git config --system --add safe.directory /workdir \
