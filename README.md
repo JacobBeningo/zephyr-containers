@@ -8,16 +8,16 @@ Three-tier image hierarchy:
 
 ```
 ghcr.io/jacobbeningo/zephyr-sdk:1.0.1
-    └── ghcr.io/jacobbeningo/zephyr-base:nxp-v4.4.0
+    └── ghcr.io/jacobbeningo/zephyr-base:v4.4.0
             └── your-project (optional CI image)
 ```
 
 | Image | What it contains | Size |
 |---|---|---|
 | `zephyr-sdk:1.0.1` | Ubuntu 24.04, Zephyr SDK 1.0.1, ARM toolchain | ~3.1 GB |
-| `zephyr-base:nxp-v4.4.0` | SDK image + Zephyr 4.4.0 + NXP modules (see below) | ~10 GB |
+| `zephyr-base:v4.4.0` | SDK image + Zephyr 4.4.0 + NXP modules (see below) | ~10 GB |
 
-### Modules included in `zephyr-base:nxp-v4.4.0`
+### Modules included in `zephyr-base:v4.4.0`
 
 | Module | Purpose |
 |---|---|
@@ -50,7 +50,7 @@ No west, no Zephyr SDK, no toolchain needed on the host.
 ### 1. Pull the image
 
 ```bash
-docker pull ghcr.io/jacobbeningo/zephyr-base:nxp-v4.4.0
+docker pull ghcr.io/jacobbeningo/zephyr-base:v4.4.0
 ```
 
 ### 2. Set up your project
@@ -112,7 +112,7 @@ docker compose run --rm zephyr
 # Or directly
 docker run -it --rm \
   -v $(pwd):/workdir/app \
-  ghcr.io/jacobbeningo/zephyr-base:nxp-v4.4.0
+  ghcr.io/jacobbeningo/zephyr-base:v4.4.0
 ```
 
 Inside the container you have full west access:
@@ -141,6 +141,37 @@ Source files are remapped automatically: the ELF contains container paths (`/wor
 
 ---
 
+## Using in GitHub Actions
+
+The base image is public on ghcr.io — no credentials required to pull it.
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/jacobbeningo/zephyr-base:v4.4.0
+      options: --user root
+    defaults:
+      run:
+        working-directory: /workdir
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build firmware
+        run: west build -b frdm_mcxn947/mcxn947/cpu0 $GITHUB_WORKSPACE -d /workdir/build
+```
+
+**Two requirements for container jobs:**
+
+- `options: --user root` — GitHub Actions needs root to write to its temp directory (`/__w/_temp/`). The image's git and Python environments are configured to work correctly as root.
+- `defaults: run: working-directory: /workdir` — west discovers extension commands (`build`, `twister`, `flash`) by traversing up from the working directory to find the workspace at `/workdir`. Without this, `west build` and `west twister` are unavailable.
+
+No `west init`, `west update`, or `pip install` steps needed — everything is baked into the image.
+
+---
+
 ## Project Structure
 
 ```
@@ -166,15 +197,11 @@ beg-zephyr-containers/
 │       ├── CMakeLists.txt
 │       ├── prj.conf
 │       └── src/main.c
-├── .github/
-│   └── workflows/
-│       ├── build-sdk.yml
-│       ├── build-base.yml
-│       └── build-project-template.yml
-└── docs/
-    ├── student-quickstart.md
-    ├── instructor-guide.md
-    └── ci-integration.md
+└── .github/
+    └── workflows/
+        ├── build-sdk.yml
+        ├── build-base.yml
+        └── build-project-template.yml
 ```
 
 ---
@@ -197,6 +224,20 @@ name-allowlist:
   - picolibc
   - mbedtls
   - segger
+```
+
+Also add `west-commands: scripts/west-commands.yml` to the zephyr project entry — this registers `west build`, `west twister`, and other extension commands:
+
+```yaml
+projects:
+  - name: zephyr
+    remote: zephyrproject-rtos
+    revision: v4.4.0
+    west-commands: scripts/west-commands.yml
+    import:
+      name-allowlist:
+        - cmsis
+        ...
 ```
 
 Build the new variant:
@@ -247,7 +288,7 @@ Multi-arch requires `--push` — it cannot be loaded locally.
 
 | `zephyr-base` tag | Zephyr version | SDK version | Ubuntu |
 |---|---|---|---|
-| `nxp-v4.4.0` | 4.4.0 | 1.0.1 | 24.04 |
+| `v4.4.0` | 4.4.0 | 1.0.1 | 24.04 |
 
 ---
 
@@ -286,3 +327,6 @@ ls /Applications/LinkServer_*/
 
 **Out of disk space during image build**
 The base image requires ~15 GB of free space in Docker Desktop's virtual disk. Increase it under Docker Desktop → Settings → Resources → Virtual Disk Limit, or remove unused images with `docker image prune -a`.
+
+**`west build` / `west twister` not found in CI**
+Ensure your workflow sets `defaults: run: working-directory: /workdir` for container jobs. west discovers extension commands by looking for the workspace root (`.west/config`) starting from the current directory. GitHub Actions defaults to running steps in `/__w/...` which is outside the workspace.
