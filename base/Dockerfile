@@ -19,16 +19,16 @@ RUN west init -l /workdir/beg-manifest \
     && west update \
     && west zephyr-export
 
-# Allow root to run west commands in the zephyr-owned workspace (GitHub Actions --user root)
+# Run as root: install Python deps system-wide (accessible to all users including root),
+# register git safe.directory for zephyr-owned repos, and copy cmake packages.
 USER root
-RUN git config --system --add safe.directory /workdir/zephyr \
+RUN pip3 install --no-cache-dir --break-system-packages --upgrade pip \
+    && pip3 install --no-cache-dir --break-system-packages \
+        -r /workdir/zephyr/scripts/requirements.txt \
+    && git config --system --add safe.directory /workdir/zephyr \
     && git config --system --add safe.directory /workdir \
     && cp -r /home/zephyr/.cmake /root/.cmake
 USER zephyr
-
-RUN pip3 install --no-cache-dir --break-system-packages --upgrade pip \
-    && pip3 install --no-cache-dir --break-system-packages \
-        -r /workdir/zephyr/scripts/requirements.txt
 
 RUN if [ "${RUN_SMOKE_TEST}" = "1" ]; then \
         west build \
