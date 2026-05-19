@@ -8,6 +8,10 @@
 
 x-common: &common
   image: ghcr.io/jacobbeningo/zephyr-base:v4.4.0
+  # Renode 1.16.1 is x86_64 Linux only. Pinning the platform here makes the
+  # build and emulator behave identically on Apple Silicon (Rosetta 2) and
+  # native x86_64 hosts.
+  platform: linux/amd64
   volumes:
     # App source and build/ output both land on the host so VS Code can open
     # the compile_commands.json and zephyr.elf for IntelliSense and debugging.

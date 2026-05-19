@@ -36,7 +36,7 @@ ghcr.io/jacobbeningo/zephyr-sdk:1.0.1
 | Image | What it contains | Size |
 |---|---|---|
 | `zephyr-sdk:1.0.1` | Ubuntu 24.04, Zephyr SDK 1.0.1, ARM toolchain | ~3.1 GB |
-| `zephyr-base:v4.4.0` | SDK image + Zephyr 4.4.0 + NXP modules (see below) | ~10 GB |
+| `zephyr-base:v4.4.0` | SDK image + Zephyr 4.4.0 + NXP modules + Renode 1.16.1 (see below) | ~10.3 GB |
 
 ### Modules included in `zephyr-base:v4.4.0`
 
@@ -55,6 +55,12 @@ ghcr.io/jacobbeningo/zephyr-sdk:1.0.1
 | `libmetal` | Hardware abstraction for open-amp |
 
 Need a different vendor? Add a new manifest under `base/manifests/` and rebuild — see [Adding a vendor variant](#adding-a-vendor-variant).
+
+### Renode simulator
+
+Renode 1.16.1 is included in the base image so students can run firmware on a simulated FRDM-MCXN947 without hardware. The `renode` docker-compose service in `project-template/` builds the firmware and launches Renode headless, streaming LED state changes to stdout. See [Running firmware in Renode](#running-firmware-in-renode).
+
+> Renode's portable-dotnet bundle is x86_64 Linux only. On Apple Silicon hosts the `project-template/docker-compose.yml` pins `platform: linux/amd64` so Rosetta 2 handles the translation transparently.
 
 ---
 
@@ -149,6 +155,34 @@ west config --list
 ```
 
 > **Note:** `west flash` and `west debug` require USB access to the debug probe. These do not work from inside a container on macOS or Windows. Use VS Code + Cortex Debug for flashing and debugging instead.
+
+### Running firmware in Renode
+
+The base image bundles Renode 1.16.1, so students can run firmware on a simulated FRDM-MCXN947 with no hardware attached. The `renode` service in `project-template/docker-compose.yml` builds the firmware and launches the emulator in one step:
+
+```bash
+docker compose run --rm renode
+```
+
+Output streams to the terminal. The supplied `.resc` script enables LED state-change logging, so a blinky-style application produces lines like:
+
+```
+[NOISY] gpio0.led_red: LED state changed to True
+[NOISY] gpio0.led_red: LED state changed to False
+```
+
+Press **Ctrl+C** to stop the emulator and exit the container.
+
+To run a firmware ELF that lives outside the default `build/zephyr/zephyr.elf` path, override the `$bin` variable:
+
+```bash
+docker compose run --rm renode \
+  renode --console --disable-xwt \
+    -e '$bin=@build-debug/zephyr/zephyr.elf' \
+    -e 'include @renode/scripts/frdm_mcxn947_zephyr.resc'
+```
+
+The platform description files (`renode/platforms/`) and the script (`renode/scripts/frdm_mcxn947_zephyr.resc`) live in the project template — students can edit them to add peripherals or change LED visibility without rebuilding the image.
 
 ---
 
@@ -282,11 +316,16 @@ beg-zephyr-containers/
 ├── project-template/
 │   ├── Dockerfile            # Tier 3 starting point (optional, for CI)
 │   ├── build.sh              # Container build wrapper for local dev
-│   ├── docker-compose.yml    # Interactive shell with volume mounts
+│   ├── docker-compose.yml    # zephyr shell + renode emulator services
 │   ├── .vscode/
 │   │   ├── launch.json       # Cortex Debug configurations
 │   │   ├── tasks.json        # Build tasks
 │   │   └── settings.json     # IntelliSense + LinkServer path
+│   ├── renode/
+│   │   ├── platforms/
+│   │   │   ├── boards/frdm_mcxn947.repl
+│   │   │   └── cpus/nxp-mcxn947-cpu0.repl
+│   │   └── scripts/frdm_mcxn947_zephyr.resc
 │   └── app/
 │       ├── CMakeLists.txt
 │       ├── prj.conf
@@ -421,3 +460,9 @@ Ensure your workflow sets `defaults: run: working-directory: /workdir` for conta
 
 **`actions/checkout` fails with permission denied in CI**
 Add `options: --user root` to your container spec. GitHub Actions needs root to write to its temp directory inside the container.
+
+**Renode exits with `rosetta error: failed to open elf` on Apple Silicon**
+Renode 1.16.1's portable-dotnet bundle is x86_64 Linux only. The `project-template/docker-compose.yml` pins `platform: linux/amd64` so Docker Desktop's Rosetta 2 layer handles the translation. If you bypass compose with `docker run`, add `--platform linux/amd64`.
+
+**Renode prints "Machine paused" and exits immediately**
+The `--console` flag makes Renode treat stdin as its monitor. A non-interactive `docker run` closes stdin straight away and the monitor quits. Use `docker run -it ...` or `docker compose run ...` (the template's compose service already sets `stdin_open` and `tty`).
