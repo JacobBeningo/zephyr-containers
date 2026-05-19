@@ -1,0 +1,51 @@
+:name: FRDM-MCXN947 Zephyr Blinky
+:description: Runs a Zephyr application on a simulated FRDM-MCXN947 with LED state changes on stdout.
+
+using sysbus
+
+$name?="frdm_mcxn947"
+mach create $name
+
+machine LoadPlatformDescription @renode/platforms/boards/frdm_mcxn947.repl
+
+# Suppress warnings for unimplemented registers in NVIC, LPUART4, and GPIO models.
+logLevel 3 sysbus.nvic
+logLevel 3 sysbus.lpuart4
+logLevel 3 sysbus.gpio0
+logLevel 3 sysbus.gpio1
+
+# Non-secure PPB aliases accessed by the Cortex-M33 during boot.
+sysbus SilenceRange <0xE002E000 0x1000>
+
+# Gaps between modeled peripherals: writes are absorbed, reads return 0xFFFFFFFF.
+sysbus Tag <0x50046000, 0x500947FF> "periph_gap_lo" 0xFFFFFFFF
+sysbus SilenceRange <0x50046000 0x4E800>
+sysbus Tag <0x50095000, 0x50095FFF> "periph_gap_lpi2c_hi" 0xFFFFFFFF
+sysbus SilenceRange <0x50095000 0x1000>
+sysbus Tag <0x50096060, 0x50097FFF> "periph_gap_mid" 0xFFFFFFFF
+sysbus SilenceRange <0x50096060 0x1FA0>
+sysbus Tag <0x50098060, 0x500B3FFF> "periph_gap_hi" 0xFFFFFFFF
+sysbus SilenceRange <0x50098060 0x1BFA0>
+sysbus Tag <0x500B5000, 0x50200000> "periph_high" 0xFFFFFFFF
+sysbus SilenceRange <0x500B5000 0x14B000>
+
+# Make LED state changes visible on stdout for the headless docker run.
+# Each Miscellaneous.LED is a child of the GPIO port it's attached to.
+# Set log level to -1 (Noisy) so transitions appear.
+logLevel -1 sysbus.gpio0.led_red
+logLevel -1 sysbus.gpio0.led_green
+logLevel -1 sysbus.gpio1.led_blue
+
+# Default ELF path matches west build output. Override with:
+#   docker compose run --rm renode -e '$bin=@/path/to/zephyr.elf'
+$bin?=@build/zephyr/zephyr.elf
+
+macro reset
+"""
+    sysbus LoadELF $bin
+    sysbus.cpu0 VectorTableOffset 0x10000000
+"""
+
+runMacro $reset
+
+start

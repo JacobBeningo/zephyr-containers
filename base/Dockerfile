@@ -20,13 +20,24 @@ RUN west init -l /workdir/beg-manifest \
     && west zephyr-export
 
 # Run as root: install Python deps system-wide (accessible to all users including root),
-# register git safe.directory for zephyr-owned repos, and copy cmake packages.
+# register git safe.directory for zephyr-owned repos, copy cmake packages, and install Renode.
 USER root
 RUN pip3 install --no-cache-dir --break-system-packages \
         -r /workdir/zephyr/scripts/requirements.txt \
     && git config --system --add safe.directory /workdir/zephyr \
     && git config --system --add safe.directory /workdir \
     && cp -r /home/zephyr/.cmake /root/.cmake
+
+# ---- Renode ----
+# Headless ARM simulator. The portable-dotnet bundle is self-contained (~300 MB).
+# Used by the `renode` docker-compose service in project-template/.
+ARG RENODE_VERSION=1.16.1
+RUN wget -q "https://github.com/renode/renode/releases/download/v${RENODE_VERSION}/renode-${RENODE_VERSION}.linux-portable-dotnet.tar.gz" \
+    && mkdir -p /opt/renode \
+    && tar xf "renode-${RENODE_VERSION}.linux-portable-dotnet.tar.gz" -C /opt/renode --strip-components=1 \
+    && rm "renode-${RENODE_VERSION}.linux-portable-dotnet.tar.gz" \
+    && ln -s /opt/renode/renode /usr/local/bin/renode
+
 USER zephyr
 
 RUN if [ "${RUN_SMOKE_TEST}" = "1" ]; then \

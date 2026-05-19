@@ -1,0 +1,116 @@
+// NXP MCXN947 CPU0 (Cortex-M33) Platform Description
+//
+// Memory map verified from ELF program headers and SDK headers:
+//   Flash (code bus):      0x10000000  (MCXN947_cm33_core0_COMMON.h)
+//   SRAM  (system bus):    0x30000000
+//   SYSCON0:               0x50000000  (peripheral bus base)
+//   SCG0:                  0x50044000  (MCXN947_cm33_core0_COMMON.h)
+//   SPC0:                  0x50045000  (MCXN947_cm33_core0_COMMON.h)
+//   LPUART4 (console):     0x500B4000  (nxp_mcxnx4x_common.dtsi offset 0xb4000 + 0x50000000)
+
+cpu0: CPU.CortexM @ sysbus
+    cpuType: "cortex-m33"
+    nvic: nvic
+
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu0@0
+    priorityMask: 0xF0
+    systickFrequency: 150000000
+
+// --- Memory ---
+
+// Internal Flash — 2 MB at code bus base 0x10000000
+// Also aliased at 0x0 so fault handlers can be fetched when VTOR resets to 0x0
+flash: Memory.MappedMemory @ {
+    sysbus 0x10000000;
+    sysbus 0x0
+}
+    size: 0x200000
+
+// SRAM0 — 320 KB (DTS: sram0 at child 0x20000000 via sram@14000000 ranges -> bus 0x30000000)
+sram0: Memory.MappedMemory @ sysbus 0x30000000
+    size: 0x50000
+
+// SRAMG — 64 KB
+sramg: Memory.MappedMemory @ sysbus 0x30050000
+    size: 0x10000
+
+// SRAMH — 32 KB
+sramh: Memory.MappedMemory @ sysbus 0x30060000
+    size: 0x8000
+
+// --- Peripheral stubs (board clock/power init) ---
+
+// SYSCON0 (0x50000000-0x50043FFF): models PRESETCTRLSET/CLR -> PRESETCTRL mirrors
+// so RESET_SetPeripheralReset and RESET_ClearPeripheralReset both exit their polling loops.
+// All other reads return 0xFFFFFFFF (clock/status bits appear enabled/ready).
+syscon0: Python.PythonPeripheral @ sysbus 0x50000000
+    size: 0x44000
+    initable: true
+    script: '''
+if request.IsInit:
+    presetctrl = [0, 0, 0]
+elif request.IsRead:
+    off = request.Offset
+    if 0x100 <= off < 0x10C and (off & 3) == 0:
+        request.Value = presetctrl[(off - 0x100) >> 2]
+    else:
+        request.Value = 0xFFFFFFFF
+else:
+    off = request.Offset
+    val = request.Value
+    if 0x120 <= off < 0x12C and (off & 3) == 0:
+        idx = (off - 0x120) >> 2
+        presetctrl[idx] = presetctrl[idx] | val
+    elif 0x140 <= off < 0x14C and (off & 3) == 0:
+        idx = (off - 0x140) >> 2
+        presetctrl[idx] = presetctrl[idx] & ((~val) & 0xFFFFFFFF)
+'''
+
+// SCG0 (System Clock Generator) — mirrors RCCR (offset 0x14) writes to CSR (offset 0x10)
+// so CLOCK_AttachClk polling loops exit immediately.
+// Returns 0xFFFFFFFF for unknowns so PLL valid bits appear set.
+// Base: 0x50044000, confirmed in MCXN947_cm33_core0_COMMON.h
+scg0: Python.PythonPeripheral @ sysbus 0x50044000
+    size: 0x1000
+    initable: true
+    script: '''
+if request.IsInit:
+    state = {}
+elif request.IsRead:
+    request.Value = state.get(request.Offset, 0xFFFFFFFF)
+else:
+    state[request.Offset] = request.Value
+    if request.Offset == 0x14:
+        state[0x10] = request.Value
+'''
+
+// SPC0 (System Power Controller) — returns 0x80000000 for all reads.
+// Bit 31 set = SRAMCTL ACK, exits SPC_SetSRAMOperateVoltage polling loop.
+// Bit 0 clear = SC not busy, exits USB power-wait loop.
+// Modeled as a Python peripheral (not a Tag) so SilenceRange is not needed —
+// Tags + SilenceRange conflict with NXPGPIOPort registration on the sysbus.
+spc0: Python.PythonPeripheral @ sysbus 0x50045000
+    size: 0x1000
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+elif request.IsRead:
+    request.Value = 0x80000000
+'''
+
+// Gap between SPC0 (ends 0x50045FFF) and LPUART4 (starts 0x500B4000).
+// Covered by Tag in .resc returning 0xFFFFFFFF for all reads.
+
+// --- Console UART ---
+
+// FlexComm4 LPUART4 — Zephyr console (zephyr,console in board DTS)
+// Offset 0xb4000 within peripheral region + base 0x50000000 = 0x500B4000
+// IRQ 39 confirmed from nxp_mcxnx4x_common.dtsi
+lpuart4: UART.NXP_LPUART @ sysbus 0x500B4000
+    frequency: 150000000
+    hasGlobalRegisters: true
+    hasFifoRegisters: true
+    fifoSize: 256
+    IRQ -> nvic@39

@@ -1,0 +1,83 @@
+// FRDM-MCXN947 Board Platform Description
+// Includes the CPU0 SoC definition and adds board-level peripherals
+
+using "renode/platforms/cpus/nxp-mcxn947-cpu0.repl"
+
+// --- GPIO ---
+// MCXN947 GPIO data registers (PDOR/PSOR/PCOR/PTOR/PDIR/PDDR) begin at offset 0x40 from
+// the peripheral base, not 0x00 as in classic Kinetis. Map the NXPGPIOPort "gpio" region
+// starting at base+0x40 so that PTOR (offset 0x4C from base, 0x0C from "gpio" start)
+// aligns with what the model expects for toggle writes.
+// The "port" region covers base+0x00 (harmless control regs: VERID/PARAM/LOCK/PCNS/ICNS).
+
+gpio0: GPIOPort.NXPGPIOPort @ {
+    sysbus new Bus.BusMultiRegistration { address: 0x50096040; size: 0x20; region: "gpio" };
+    sysbus new Bus.BusMultiRegistration { address: 0x50096000; size: 0x40; region: "port" }
+}
+    numberOfPins: 32
+    IRQ -> nvic@17
+
+gpio1: GPIOPort.NXPGPIOPort @ {
+    sysbus new Bus.BusMultiRegistration { address: 0x50098040; size: 0x20; region: "gpio" };
+    sysbus new Bus.BusMultiRegistration { address: 0x50098000; size: 0x40; region: "port" }
+}
+    numberOfPins: 32
+    IRQ -> nvic@19
+
+// --- On-board RGB LEDs (active-low) ---
+// Red:   GPIO0 pin 10  (led0 alias in DTS)
+// Green: GPIO0 pin 27  (led1 alias in DTS)
+// Blue:  GPIO1 pin 2   (led2 alias in DTS)
+
+led_red: Miscellaneous.LED @ gpio0 10
+    invert: true
+
+led_green: Miscellaneous.LED @ gpio0 27
+    invert: true
+
+led_blue: Miscellaneous.LED @ gpio1 2
+    invert: true
+
+gpio0:
+    10 -> led_red@0
+    27 -> led_green@0
+
+gpio1:
+    2 -> led_blue@0
+
+// --- I2C ---
+
+// FlexCOMM2 LPI2C2 — Arduino I2C header (arduino_i2c alias in board DTS)
+// LP_FLEXCOMM2 base: 0x50094000.  LPI2C2 registers start at offset 0x800: 0x50094800.
+// LP_FLEXCOMM wrapper registers (ISTAT at 0x50094FF4, PSELID at 0x50094FF8) sit at the top
+// of the 4KB page and are NOT part of the LPI2C register map.  The S32K3XX model is
+// restricted to the LPI2C register range so the wrapper registers fall through to lp_flexcomm2.
+lpi2c2: I2C.S32K3XX_LowPowerInterIntegratedCircuit @ sysbus <0x50094800, +0x400>
+    IRQ -> nvic@37
+
+// LP_FLEXCOMM2 wrapper registers: PSELID (select I2C mode) and ISTAT (interrupt aggregation).
+// ISTAT must return kLPFLEXCOMM_I2cMasterInterruptFlag (bit 4 = 0x10) so the LP_FLEXCOMM ISR
+// dispatches to the LPI2C handler when IRQ37 fires (rather than silently discarding it).
+// PSELID must have I2CPRESENT (bit 6) set so LP_FLEXCOMM_PeripheralIsPresent() returns true.
+// Offsets within this peripheral: ISTAT = 0x3F4, PSELID = 0x3F8 (= 0x50094FF4/FF8 - 0x50094C00).
+lp_flexcomm2: Python.PythonPeripheral @ sysbus 0x50094C00
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pselid = 0x40
+elif request.IsRead:
+    off = request.Offset
+    if off == 0x3F4:
+        request.Value = 0x10
+    elif off == 0x3F8:
+        request.Value = pselid
+    else:
+        request.Value = 0
+else:
+    if request.Offset == 0x3F8:
+        pselid = (request.Value & 0x7) | 0x40
+'''
+
+// Virtual BME280 at I2C address 0x77 (from samples/sensor/bme280/arduino_i2c.overlay)
+bme280: I2C.BME280 @ lpi2c2 0x77

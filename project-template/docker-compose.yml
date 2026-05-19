@@ -1,17 +1,37 @@
+# docker-compose.yml — Zephyr project template
+#
+# Usage:
+#   docker compose run --rm zephyr    # Interactive shell with west access
+#   docker compose run --rm renode    # Build firmware and run on simulated FRDM-MCXN947
+#
+# The renode service streams LED state changes to stdout. Ctrl+C to exit.
+
+x-common: &common
+  image: ghcr.io/jacobbeningo/zephyr-base:v4.4.0
+  volumes:
+    # App source and build/ output both land on the host so VS Code can open
+    # the compile_commands.json and zephyr.elf for IntelliSense and debugging.
+    - .:/workdir/app
+    # Persist ccache across runs for faster incremental builds
+    - ccache:/home/zephyr/.ccache
+  working_dir: /workdir/app
+  environment:
+    - CCACHE_DIR=/home/zephyr/.ccache
+  stdin_open: true
+  tty: true
+
 services:
+  # Interactive shell with full west access
   zephyr:
-    image: ghcr.io/jacobbeningo/zephyr-base:nxp-v4.4.0
-    volumes:
-      # App source and build/ output both land on the host so VS Code can open
-      # the compile_commands.json and zephyr.elf for IntelliSense and debugging.
-      - .:/workdir/app
-      # Persist ccache across runs for faster incremental builds
-      - ccache:/home/zephyr/.ccache
-    working_dir: /workdir/app
-    environment:
-      - CCACHE_DIR=/home/zephyr/.ccache
-    stdin_open: true
-    tty: true
+    <<: *common
+
+  # Build firmware and run on simulated FRDM-MCXN947.
+  # LED state changes appear on stdout. Ctrl+C to stop.
+  renode:
+    <<: *common
+    command: >
+      bash -c "west build -b frdm_mcxn947/mcxn947/cpu0 /workdir/app -d /workdir/app/build &&
+               renode --console --disable-xwt renode/scripts/frdm_mcxn947_zephyr.resc"
 
 volumes:
   ccache:
